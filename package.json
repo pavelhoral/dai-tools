@@ -1,0 +1,11 @@
+{
+  "name": "dai-tools",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {},
+  "devDependencies": {
+    "commander": "^2.15.1",
+    "csv": "^3.0.2",
+    "xlsx": "^0.12.8"
+  }
+}
