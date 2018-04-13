@@ -47,10 +47,7 @@ var source = aggregate;
 var output = [];
 
 function processString(string) {
-    var trans = source[string.id];
-    if (!trans || !string.en) {
-        return;
-    }
+    var trans = source[string.id] || { cs: '' };
     string.cs = trans.cs;
     string.mismatch = trans.en !== string.en ? '1' : '';
     output.push(string);
