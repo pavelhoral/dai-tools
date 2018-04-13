@@ -6,6 +6,7 @@
   "devDependencies": {
     "commander": "^2.15.1",
     "csv": "^3.0.2",
+    "unescape": "^1.0.1",
     "xlsx": "^0.12.8"
   }
 }

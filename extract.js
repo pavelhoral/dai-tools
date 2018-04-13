@@ -2,7 +2,7 @@
 "use strict";
 var path = require('path');
 var fs = require('fs');
-var csv = require('csv')
+var CSV = require('csv')
 
 if (process.argv.length < 3) {
     console.error(`Usage: ${path.basename(process.argv[1])} <directory...>`);
@@ -12,13 +12,16 @@ if (process.argv.length < 3) {
 var languages = [];
 var aggregate = {};
 
-function processDir(directory, language) {
+function searchDir(directory) {
     fs.readdirSync(directory).map(file => path.join(directory, file)).forEach(file => {
-        var stat = fs.statSync(file);
-        if (stat.isDirectory()) {
-            processDir(file, path.basename(directory) === 'texttable' ? parseLanguage(file) : language);
-        } else if (language && file.endsWith('.txt')) {
-            processFile(file, path.basename(file), language);
+        if (!fs.statSync(file).isDirectory()) {
+            return;
+        }
+        var language = path.basename(directory) === 'texttable' ? parseLanguage(file) : null;
+        if (language) {
+            processDir(file, '', language);
+        } else {
+            searchDir(file);
         }
     });
 }
@@ -28,7 +31,17 @@ function parseLanguage(directory) {
     return /[a-z]{2}/.test(language) ? language : null;
 }
 
-function processFile(file, name, language) {
+function processDir(base, rel, language) {
+    fs.readdirSync(path.join(base, rel)).map(file => path.join(base, rel, file)).forEach(file => {
+        if (fs.statSync(file).isDirectory()) {
+            processDir(base, path.join(rel, path.basename(file)), language);
+        } else if (file.endsWith('.txt')) {
+            processFile(file, rel, language);
+        }
+    });
+}
+
+function processFile(file, context, language) {
     if (languages.indexOf(language) < 0) {
         languages.push(language);
     }
@@ -40,7 +53,7 @@ function processFile(file, name, language) {
         }
         var value = line.substring(split + 1).trim();
         if (value && validateString(value)) {
-            processLine(parseKey(line.substring(0, split)), value, name.replace(/\.?bin_VB.txt/, ''), language);
+            processLine(parseKey(line.substring(0, split)), value, context, language);
         }
     });
 }
@@ -62,32 +75,56 @@ function parseKey(key) {
 }
 
 function processLine(key, value, context, language) {
-    var index = key.id + '-' + key.tag;
+    var index = context + ':' + key.key;
     var string = aggregate[index];
     if (!string) {
         string = Object.assign({
-            context: [context]
+            context: context
         }, key);
         aggregate[index] = string;
     }
     if (!string[language]) {
         string[language] = value;
     }
-    if (string.context.indexOf(context) < 0) {
-        string.context.push(context);
-    }
     if (string[language] !== value) {
-        console.error(`WARN: ${key.id} ${key.key} Different strings [${string.context.join(',')}].`);
+        console.error(`WARN ${key.id} ${key.key} Different strings [${string.context.join(',')}].`);
     }
 }
 
 for (let i = 2; i < process.argv.length; i += 1) {
-    processDir(process.argv[i]);
+    searchDir(process.argv[i]);
 }
 
-var writer = csv.stringify({ header: true, columns: ['id', 'tag', 'key'].concat(languages), delimiter: ';'});
+var squashed = {};
+Object.keys(aggregate).map(key => aggregate[key]).forEach(string => {
+    var index = string.id + '-' + string.tag + ': ' + (string.en || string[languages[0]]);
+    if (!squashed[index]) {
+        squashed[index] = string;
+    }
+});
+
+var counter = {};
+Object.keys(squashed).map(key => squashed[key]).forEach(string => {
+    languages.filter(language => !!string[language]).forEach(language => {
+        var index = language + '\n' + string[language];
+        counter[index] = (counter[index] || 0) + 1;
+    });
+});
+Object.keys(squashed).map(key => squashed[key]).forEach(string => {
+    languages.forEach(language => {
+        var index = language + '\n' + string[language];
+        string['#' + language] = counter[index] || '';
+    });
+});
+
+var columns = ['id', 'tag', 'key'];
+languages.forEach(language => {
+    columns.push(language);
+    columns.push('#' + language);
+});
+var writer = CSV.stringify({ header: true, columns: columns, delimiter: ';'});
 writer.pipe(process.stdout);
-Object.keys(aggregate).sort().map(key => aggregate[key]).forEach(string => {
+Object.keys(squashed).sort().map(key => squashed[key]).forEach(string => {
     writer.write(string);
 });
 writer.end();
